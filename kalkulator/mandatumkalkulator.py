@@ -35,4 +35,38 @@ def mandatumkalkulacio(
         for korzet, szabalyok in (taktikai_atszavazas_korzet or {}).items()
     }
 
+    df = pd.read_csv(csv_path, sep=';', encoding='utf-8-sig')
+    df.drop(columns=['Index'], inplace=True, errors='ignore')
+
+    df.columns = [normalize_party_name(col) if col not in ['Körzet', 'Népesség'] else col for col in df.columns]
+
+    parties = [col for col in df.columns if col not in ['Körzet', 'Népesség']]
+
+    total_population = df['Népesség'].sum()
+
+    # EP országos eredmények számítása a fájlból
+    ep_eredmenyek = {
+        party: (df['Népesség'] * df[party] / 100).sum() / total_population * 100
+        for party in parties
+    }
+
+    # Arányszám számítása: körzeti % / országos %
+    aranyok = {
+        party: df[party] / ep_eredmenyek[party]
+        for party in parties
+    }
+
+    # Előrejelzett körzeti %-ok
+    pred_szazalek_df = pd.DataFrame({
+        party: aranyok[party] * orszagos_eredmenyek.get(party, 0)
+        for party in parties
+    })
+
+    # Korrigálás, ha több mint 100%
+    row_sums = pred_szazalek_df.sum(axis=1)
+    faktor = pd.Series(1.0, index=row_sums.index)
+    overshoot = row_sums > 100
+    faktor[overshoot] = 100.0 / row_sums[overshoot]
+    pred_szazalek_df = pred_szazalek_df.mul(faktor, axis=0)
+
     return None
