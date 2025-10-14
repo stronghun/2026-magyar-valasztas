@@ -69,4 +69,65 @@ def mandatumkalkulacio(
     faktor[overshoot] = 100.0 / row_sums[overshoot]
     pred_szazalek_df = pred_szazalek_df.mul(faktor, axis=0)
 
+    # Körzeti szavazatszám
+    korzeti_szavazok = (df['Népesség'] * reszvetel_szazalek / 100).round().astype(int)
+    pred_szavazat_df = pd.DataFrame({
+        party: (pred_szazalek_df[party] / 100 * korzeti_szavazok).round().astype(int)
+        for party in parties
+    })
+
+    # Átszavazás alkalmazása körzetenként
+    for idx, korzet in enumerate(df["Körzet"]):
+        # Ellenőrizzük, van-e külön szabály adott körzetre
+        if korzet in taktikai_atszavazas_korzet:
+            atszavazas_szabalyok = taktikai_atszavazas_korzet[korzet]
+        else:
+            atszavazas_szabalyok = taktikai_atszavazas
+
+        # Alkalmazzuk az átszavazási szabályokat
+        for party, (arany, cel_party) in atszavazas_szabalyok.items():
+            if party in pred_szavazat_df.columns and cel_party in pred_szavazat_df.columns:
+                athelyezendo = int(round(pred_szavazat_df.at[idx, party] * arany))
+                pred_szavazat_df.at[idx, party] -= athelyezendo
+                pred_szavazat_df.at[idx, cel_party] += athelyezendo
+            else:
+                print(f"Figyelmeztetés: Érvénytelen párt a körzetben: {korzet}, párt: {party}, cél: {cel_party}")
+
+    # Új százalékok kiszámítása
+    total_votes_per_district = pred_szavazat_df.sum(axis=1)
+    pred_szazalek_df_adjusted = (pred_szavazat_df.div(total_votes_per_district, axis=0) * 100).round(2)
+
+    # Egyéni győztesek, töredék, kompenzációs értékek
+    egyeni_gyoztesek = []
+    egyeni_mand = {p: 0 for p in parties}
+    toredek = {p: 0 for p in parties}
+    komp = {p: 0 for p in parties}
+    kulonbsegek = []
+
+    for idx, row in pred_szavazat_df.iterrows():
+        winner = row.idxmax()
+        runnerup = row.drop(winner).max()
+        kulonbseg_szavazat = row[winner] - runnerup
+        total_votes = total_votes_per_district[idx]
+        kulonbseg_szazalek = (kulonbseg_szavazat / total_votes * 100).round(2)
+
+        egyeni_gyoztesek.append(winner)
+        egyeni_mand[winner] += 1
+        komp[winner] += int(kulonbseg_szavazat + 1)
+        kulonbsegek.append(kulonbseg_szazalek)
+
+        for p in parties:
+            if p != winner:
+                toredek[p] += int(row[p])
+
+    # Összes szavazó (országosan)
+    ossz_szavazo = int(round(reszvetel_szazalek / 100 * total_population))
+
+    # Listás szavazatok számítása a korrigált, 100-as bázisú arányok alapján
+    listas_szavazat = {
+    p: int(round(pred_szazalek_df_adjusted[p].mean() / 100 * ossz_szavazo)) + kulhoni_szavazatok.get(p, 0)
+    for p in parties
+    }
+
+
     return None
