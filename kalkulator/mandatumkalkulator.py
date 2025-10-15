@@ -1,9 +1,9 @@
 import pandas as pd
 
 def normalize_party_name(name: str) -> str:
-    """
-    Normalizálja a pártneveket: eltávolítja a ' (%)' végződést, és egységesíti az elnevezéseket.
-    """
+    
+    # Normalizálja a pártneveket: eltávolítja a ' (%)' végződést, és egységesíti az elnevezéseket.
+    
     name = name.strip()
     if name.endswith(" (%)"):
         name = name[:-4]
@@ -128,6 +128,87 @@ def mandatumkalkulacio(
     p: int(round(pred_szazalek_df_adjusted[p].mean() / 100 * ossz_szavazo)) + kulhoni_szavazatok.get(p, 0)
     for p in parties
     }
+    egyeni_szavazat = {
+        p: pred_szavazat_df[p].sum()
+        for p in parties
+    }
+
+    listas = {
+        p: listas_szavazat[p] + toredek[p] + komp[p]
+        for p in parties
+    }
+
+    # 5% küszöb + D'Hondt mátrix
+    jogosult = [
+        p for p in parties
+        if p != "Független" and orszagos_eredmenyek.get(p, 0) >= 5.0
+    ]
+    list_mand = {p: 0 for p in jogosult}
+    fix_db = sum(fix_mandatumok.get(p, 0) for p in parties)
+    dhondt_helyek = 93 - fix_db
+
+    for _ in range(dhondt_helyek):
+        ertek = {p: listas[p] / (1 + list_mand[p]) for p in jogosult}
+        nyertes = max(ertek, key=ertek.get)
+        list_mand[nyertes] += 1
+
+    for p in parties:
+        list_mand[p] = list_mand.get(p, 0) + fix_mandatumok.get(p, 0)
+
+    osszes_mand = {p: egyeni_mand[p] + list_mand[p] for p in parties}
+
+    print("\nMandátumösszesítő:")
+    for p in parties:
+        print(f"{p}: Összesen: {osszes_mand[p]}, Egyéni: {egyeni_mand[p]}, Listás: {list_mand[p]}, Listás szavazat: {listas_szavazat[p]}, Egyéni szavazat: {egyeni_szavazat[p]}")
+
+    out_df = pd.DataFrame({
+        "Körzet": df["Körzet"],
+        **{p: pred_szazalek_df_adjusted[p].round(2) for p in parties},
+        "Győztes": egyeni_gyoztesek,
+        "Különbség": kulonbsegek
+    })
+
+    out_df.to_csv(output_path, sep=';', encoding='utf-8-sig', index=False)
+    return egyeni_mand, list_mand, osszes_mand, out_df
 
 
-    return None
+#mandatumkalkulacio(
+    csv_path="2024_ep_input_korzetek_bovitett.csv",
+    orszagos_eredmenyek={
+        "Fidesz": 50.0,
+        "Tisza": 42.0,
+        "DK-MSZP-Párbeszéd": 2.0,
+        "Momentum": 0,
+        "MKKP": 3.0,
+        "Mi Hazánk": 4.0,
+        "Független": 1.0
+    },
+    reszvetel_szazalek=70.0,
+    kulhoni_szavazatok={
+        "Fidesz": 300000,
+        "Tisza": 0,
+        "DK-MSZP-Párbeszéd": 0,
+        "Momentum": 0,
+        "MKKP": 0,
+        "Mi Hazánk": 0,
+        "Független": 0
+    },
+    fix_mandatumok={
+        "Fidesz": 2,
+        "Tisza": 0,
+        "DK-MSZP-Párbeszéd": 0,
+        "Momentum": 0,
+        "MKKP": 0,
+        "Mi Hazánk": 0,
+        "Független": 0
+    },
+    taktikai_atszavazas={
+        #"DK-MSZP-Párbeszéd" : (0.5, "Tisza")
+    },
+    taktikai_atszavazas_korzet={
+        #"Budapest 05": {
+        #    "Tisza": (0.5, "Független"),  # „%” jel nélkül is működik most már
+        #}
+    },
+    output_path="mandatum_kalkulacio_eredmeny.csv"
+#)
