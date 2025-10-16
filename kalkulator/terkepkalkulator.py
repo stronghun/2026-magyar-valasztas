@@ -116,3 +116,48 @@ def jelmagyarazat(soup, kulonbseg_minmax, shade_threshold):
     label_size = int(16 * scale_factor)
     spacing_x = 400 * scale_factor
     spacing_y = 80 * scale_factor
+
+    # Minden párthoz külön box és szöveg
+    for (col, row_index), (party, (c_light, c_dark), (min_val, max_val)) in zip(layout, active_parties):
+        x = col * spacing_x
+        y = row_index * spacing_y
+        grad_id = f"grad_{unidecode.unidecode(party).replace(' ', '-')}"
+        rect = soup.new_tag("rect", x=str(x), y=str(y), width=str(box_width), height=str(box_height), fill=f"url(#{grad_id})")
+        group.append(rect)
+
+        for pos, val in zip([0, box_width / 2, box_width], [min_val, (min_val + max_val)/2, max_val]):
+            label = soup.new_tag("text", x=str(x + pos), y=str(y + box_height + 18), fill=interpolate_color(c_light, c_dark, 0.8),
+                                 **{"font-size": str(label_size), "text-anchor": "middle", "font-weight": "bold"})
+            label.string = f"{val:.2f}%"
+            group.append(label)
+
+        # Pártneveket jobboldalra írjuk
+        text = soup.new_tag("text", x=str(x + box_width + 12), y=str(y + box_height - 3), fill=interpolate_color(c_light, c_dark, 0.8),
+                            **{"font-size": str(font_size), "font-weight": "bold"})
+        text.string = DISPLAY_NAMES.get(party, party)
+        group.append(text)
+
+    soup.svg.append(group)
+
+# Ha akarsz, bp-i körzeteket nagyobbra rakjuk
+def nagyits_budapestet(soup):
+    budapest_ids = [f"budapest-{i:02}" for i in range(1, 17)]
+    scale = 5.5
+    translate_x = 1000
+    translate_y = 750
+    rotate_deg = 7
+    pivot_x = 244.1
+    pivot_y = 172.8
+    stroke_width = 0.05
+
+    for korzet_id in budapest_ids:
+        path = soup.find("path", {"id": korzet_id})
+        if path:
+            new_path = soup.new_tag("path", d=path["d"])
+            new_path["id"] = korzet_id + "-zoom"
+            szin = path.get("style", "").split(";")[0]
+            new_path["style"] = f"{szin}; stroke: #000; stroke-width: {stroke_width};"
+            new_path["transform"] = (
+                f"translate({translate_x},{translate_y}) scale({scale}) rotate({rotate_deg}) translate({-pivot_x},{-pivot_y})"
+            )
+            soup.svg.append(new_path)
