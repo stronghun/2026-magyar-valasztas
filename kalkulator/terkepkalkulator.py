@@ -161,3 +161,48 @@ def nagyits_budapestet(soup):
                 f"translate({translate_x},{translate_y}) scale({scale}) rotate({rotate_deg}) translate({-pivot_x},{-pivot_y})"
             )
             soup.svg.append(new_path)
+
+def terkep_svg(svg_path, korzet_df, shade_threshold=30, bp_zoom_enabled=True):
+    today = date.today().isoformat()
+    os.makedirs("terkep", exist_ok=True)
+    suffix = "_teljes_bp" if bp_zoom_enabled else "_teljes"
+    output_path = f"terkep/{today}{suffix}.svg"
+
+    if "Különbség" not in korzet_df.columns:
+        korzet_df["Különbség"] = 0.0
+    else:
+        korzet_df["Különbség"] = korzet_df["Különbség"].astype(float)
+    required_columns = ["Körzet", "Győztes"] + list(PART_COLORS.keys())
+    if not all(col in korzet_df.columns for col in required_columns):
+        raise ValueError(f"A korzet_df-nek tartalmaznia kell a következő oszlopokat: {required_columns}")
+    
+    for i, row in korzet_df.iterrows():
+        gy = row["Győztes"]
+        if gy in PART_COLORS:
+            max_ellenfel = max([row[p] for p in PART_COLORS if p != gy])
+            korzet_df.at[i, "Különbség"] = row[gy] - max_ellenfel
+
+    with open(svg_path, "r", encoding="utf-8") as f:
+        soup = BeautifulSoup(f.read(), "xml")
+
+    svg_tag = soup.find("svg")
+    viewbox = svg_tag.get("viewBox")
+    if viewbox:
+        x, y, w, h = map(float, viewbox.split())
+        padding = 20  # px-ben, a térkép alja felé
+        svg_tag["viewBox"] = f"{x} {y} {w * 2} {h * 2 + padding}"  # növeljük a magasságot
+        svg_tag["width"] = str(w * 2)
+        svg_tag["height"] = str(h * 2 + padding)
+
+
+    # Duplázzuk a nagyságot
+    for path in soup.find_all("path"):
+        path["transform"] = f"scale(2) {path.get('transform', '')}".strip()
+
+    # A szöveget is
+    for text in soup.find_all("text"):
+        text["font-size"] = str(float(text.get("font-size", 10)) * 2)
+        if "x" in text.attrs:
+            text["x"] = str(float(text["x"]) * 2)
+        if "y" in text.attrs:
+            text["y"] = str(float(text["y"]) * 2)
