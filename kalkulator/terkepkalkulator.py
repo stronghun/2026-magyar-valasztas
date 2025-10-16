@@ -206,3 +206,27 @@ def terkep_svg(svg_path, korzet_df, shade_threshold=30, bp_zoom_enabled=True):
             text["x"] = str(float(text["x"]) * 2)
         if "y" in text.attrs:
             text["y"] = str(float(text["y"]) * 2)
+    kulonbseg_minmax = {}
+    for party in PART_COLORS:
+        part_vals = korzet_df[korzet_df["Győztes"] == party]["Különbség"].abs()
+        kulonbseg_minmax[party] = (safe_min(part_vals), safe_max(part_vals))
+
+    for _, row in korzet_df.iterrows():
+        korzet_id = korzet_to_svg_id(row["Körzet"])
+        path = soup.find("path", {"id": korzet_id})
+        if path:
+            szin = szin_kulonbseg_alapjan(row, shade_threshold)
+            path["style"] = f"fill: {szin}; stroke: #000; stroke-width: 0.1;"
+
+    if bp_zoom_enabled:
+        print(">> Budapest nagyítása bekapcsolva.")
+        nagyits_budapestet(soup)
+    else:
+        print(">> Budapest nagyítása kikapcsolva.")
+
+    jelmagyarazat(soup, kulonbseg_minmax, shade_threshold)
+
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write(str(soup))
+
+    print(f">> SVG fájl elmentve: {output_path}")
