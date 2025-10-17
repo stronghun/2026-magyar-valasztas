@@ -65,7 +65,7 @@ def szin_kulonbseg_alapjan(row, shade_threshold):
     return GREY
 
 # Szöveg kiírása
-def jelmagyarazat(soup, kulonbseg_minmax, shade_threshold):
+def jelmagyarazat(soup, kulonbseg_minmax, shade_threshold, korzet_df):
     defs = soup.new_tag("defs")
 
     def create_gradient(id_, c_light, c_dark, min_val, max_val):
@@ -131,11 +131,14 @@ def jelmagyarazat(soup, kulonbseg_minmax, shade_threshold):
             label.string = f"{val:.2f}%"
             group.append(label)
 
-        # Pártneveket jobboldalra írjuk
-        text = soup.new_tag("text", x=str(x + box_width + 12), y=str(y + box_height - 3), fill=interpolate_color(c_light, c_dark, 0.8),
+        # Pártneveket jobboldalra írjuk + egyéni OEVK győzelmek hozzáfűzése
+        egyeni_db = korzet_df["Győztes"].value_counts().to_dict().get(party, 0)
+        text = soup.new_tag("text", x=str(x + box_width + 12), y=str(y + box_height - 3),
+                            fill=interpolate_color(c_light, c_dark, 0.8),
                             **{"font-size": str(font_size), "font-weight": "bold"})
-        text.string = DISPLAY_NAMES.get(party, party)
+        text.string = f"{DISPLAY_NAMES.get(party, party)} ({egyeni_db})"
         group.append(text)
+
 
     soup.svg.append(group)
 
@@ -224,7 +227,7 @@ def terkep_svg(svg_path, korzet_df, shade_threshold=30, bp_zoom_enabled=True):
     else:
         print(">> Budapest nagyítása kikapcsolva.")
 
-    jelmagyarazat(soup, kulonbseg_minmax, shade_threshold)
+    jelmagyarazat(soup, kulonbseg_minmax, shade_threshold, korzet_df)
 
     with open(output_path, "w", encoding="utf-8") as f:
         f.write(str(soup))
