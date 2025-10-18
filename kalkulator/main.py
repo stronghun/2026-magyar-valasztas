@@ -5,12 +5,12 @@ from terkepkalkulator import terkep_svg
 mandatumkalkulacio(
     csv_path="2024_ep_input_korzetek_bovitett.csv",
     orszagos_eredmenyek={
-        "Fidesz": 47.0,
+        "Fidesz": 35.0,
         "Tisza": 50.0,
-        "DK-MSZP-Párbeszéd": 3.0,
+        "DK-MSZP-Párbeszéd": 2.0,
         "Momentum": 0,
-        "MKKP": 2.0,
-        "Mi Hazánk": 4.0,
+        "MKKP": 3.0,
+        "Mi Hazánk": 5.0,
         "Független": 1.0
     },
     reszvetel_szazalek=70.0,
