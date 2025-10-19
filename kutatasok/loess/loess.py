@@ -50,4 +50,32 @@ def kozvelemeny_grafikon(
     ]
 
     def loess(x, y, xnew, span, degree=2):
-        return None
+        x, y, xnew = np.asarray(x), np.asarray(y), np.asarray(xnew)
+        n = len(x)
+        if n < degree + 2:
+            return np.full(len(xnew), np.nan)
+        k = max(int(span * n), degree + 1)
+        ynew = np.empty(len(xnew))
+        for i, xi in enumerate(xnew):
+            dists = np.abs(x - xi)
+            idx_sort = np.argsort(dists)
+            h = dists[idx_sort[k - 1]]
+            if h == 0:
+                if np.all(x == xi):
+                    ynew[i] = np.mean(y)
+                    continue
+                h = np.max(dists[dists > 0]) if np.any(dists > 0) else 1e-6
+            u = dists / h
+            w = np.where(u < 1, (1 - u**3)**3, 0)
+            dx = x - xi
+            X = np.ones((n, degree + 1))
+            for d in range(1, degree + 1):
+                X[:, d] = dx ** d
+            W = np.diag(w)
+            try:
+                beta = np.linalg.solve(X.T @ W @ X, X.T @ W @ y)
+                ynew[i] = beta[0]
+            except np.linalg.LinAlgError:
+                sum_w = np.sum(w)
+                ynew[i] = np.sum(w * y) / sum_w if sum_w > 0 else np.nan
+        return ynew
