@@ -113,3 +113,47 @@ def kozvelemeny_grafikon(
     df_long = pd.melt(df_visible, id_vars=["date"], value_vars=list(filtered_dict.keys()),
                       var_name="party", value_name="value")
     df_long["party"] = pd.Categorical(df_long["party"], categories=list(filtered_dict.keys()))
+
+    # Plot
+    fig, ax = plt.subplots(figsize=(szelesseg, magassag))
+    ax.axhline(valasztasi_kuszob, color=kuszob_szin, linestyle="--", linewidth=kuszob_vastagsag)
+
+    # Pontok, trendvonalak
+    for party, color in filtered_dict.items():
+        pdata = df_long[df_long["party"] == party].dropna(subset=["value"]).sort_values("date")
+        if len(pdata) < 3:
+            continue
+        ax.scatter(
+            pdata["date"], pdata["value"],
+            s=pont_meret, color=color,
+            alpha=pont_atlatszosag, edgecolor="white", linewidth=0.6
+        )
+        x = (pdata["date"] - pdata["date"].min()).dt.days.values
+        y = pdata["value"].values
+        x_dense = np.linspace(min(x), max(x), 500)
+        y_smooth = loess(x, y, x_dense, loess_szigor)
+        date_dense = pdata["date"].min() + pd.to_timedelta(x_dense, unit="D")
+        ax.plot(date_dense, y_smooth, color=color,
+                linewidth=trend_vastagsag, label=party)
+        
+    # Választási eredménypontok
+    if valasztasi_eredmenyek:
+        for valasztas in valasztasi_eredmenyek:
+            datum = pd.to_datetime(valasztas["datum"])
+            for party, result in valasztas["adatok"].items():
+                if party in filtered_dict:
+                    ax.scatter(
+                        datum, result,
+                        s=pont_meret * eredmeny_meret_szorzo,
+                        color=filtered_dict[party],
+                        alpha=min(pont_atlatszosag * eredmeny_atlatszosag_szorzo, 1.0),
+                        linewidth=0,
+                        marker="D",
+                        zorder=10
+                    )
+
+    # Tengelyek
+    ymin = y_hatarok[0] + y_offset_negativ
+    ymax = y_hatarok[1]
+    ax.set_ylim(ymin, ymax)
+    ax.set_xlim(start_date, end_date)
