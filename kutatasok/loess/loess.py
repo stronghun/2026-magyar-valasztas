@@ -4,6 +4,7 @@ import matplotlib.dates as mdates
 from matplotlib.ticker import FuncFormatter
 import numpy as np
 import warnings
+import re
 
 warnings.filterwarnings("ignore", category=np.exceptions.RankWarning)
 
@@ -43,7 +44,8 @@ def kozvelemeny_grafikon(
     racs_alvonal_vastagsag: float = 0.6,
 
     # Pártok
-    partok_es_szinek: dict = None
+    partok_es_szinek: dict = None,
+    kimenet: str = None
 
 ):
     # Stílusbeállítások
@@ -157,3 +159,84 @@ def kozvelemeny_grafikon(
     ymax = y_hatarok[1]
     ax.set_ylim(ymin, ymax)
     ax.set_xlim(start_date, end_date)
+
+    # Kerekít + '%'
+    def y_fmt(val, pos):
+        return f"{int(val)}%" if val >= 0 else ""
+    ax.yaxis.set_major_formatter(FuncFormatter(y_fmt))
+
+    # Kisebb rácsok megjelenítése
+    ax.xaxis.set_major_locator(mdates.MonthLocator(bymonth=[1, 4, 7, 10]))
+    ax.xaxis.set_minor_locator(mdates.MonthLocator(interval=1))
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%b %Y"))
+    ax.grid(which="minor", color=racs_alvonal_szin, linewidth=racs_alvonal_vastagsag, linestyle="-")
+
+    ax.legend(loc="center left", bbox_to_anchor=(1, 0.5), fontsize=14, labelspacing=0.8)
+    ax.tick_params(axis="x", labelsize=11)
+    ax.tick_params(axis="y", labelsize=12)
+
+    plt.tight_layout()
+    plt.savefig(f"{kimenet}.svg", bbox_inches="tight", pad_inches=0.05)
+
+    # SVG elmentése
+    with open(f"{kimenet}.svg", "r", encoding="utf-8") as f:
+        svg = f.read()
+    svg = re.sub(r'width="[\d\.]+pt"', 'width="100%"', svg)
+    svg = re.sub(r'height="[\d\.]+pt"', 'height="100%"', svg)
+    if 'preserveAspectRatio' not in svg:
+        svg = svg.replace('<svg ', '<svg preserveAspectRatio="xMidYMid meet" ', 1)
+    with open(f"{kimenet}_full.svg", "w", encoding="utf-8") as f:
+        f.write(svg)
+
+    print(f"{kimenet}.svg elmentve")
+
+
+
+# Futtatás
+
+partok_es_szinek = {
+    "SPD": "#EB001F",
+    "Union": "#000000",
+    "Grüne": "#64A12D",
+    "FDP": "#FFED00",
+    "AfD": "#009EE0",
+    "Linke": "#BE3075",
+    "BSW": "#792350",
+    "FW": "#F7A800"
+}
+
+valasztasi_eredmenyek = [
+    {
+        "datum": "2021-09-26",
+        "adatok": {"SPD": 25.7, "Union": 24.1, "Grüne": 14.8, "FDP": 11.5, "AfD": 10.3, "Linke": 4.9}
+    },
+    {
+        "datum": "2025-02-23",
+        "adatok": {"SPD": 22.3, "Union": 27.5, "Grüne": 15.0, "AfD": 17.1, "BSW": 5.6}
+    }
+]
+
+kozvelemeny_grafikon(
+    csv_fajl="de.csv",
+    mettol="2021-10-01",
+    meddig="2025-03-01",
+    y_hatarok=(0, 40),
+    y_offset_negativ=-2,
+    valasztasi_kuszob=5,
+    kuszob_vastagsag=1.8,
+    loess_szigor=0.09,
+    pont_meret=30,
+    pont_atlatszosag=0.45,
+    trend_vastagsag=2.6,
+    eredmeny_meret_szorzo=2.5,      
+    eredmeny_atlatszosag_szorzo=1.0, 
+    racs_szin="white",
+    racs_vastagsag=1.5,
+    racs_alvonal_szin="#ffffffaa",
+    racs_alvonal_vastagsag=0.6,
+    racs_lathato=True,
+    partok_es_szinek=partok_es_szinek,
+    valasztasi_eredmenyek=valasztasi_eredmenyek,
+    kimenet="test"
+)
+
