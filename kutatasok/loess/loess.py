@@ -88,3 +88,28 @@ def kozvelemeny_grafikon(
                 sum_w = np.sum(w)
                 ynew[i] = np.sum(w * y) / sum_w if sum_w > 0 else np.nan
         return ynew
+    
+    # Adatok beolvasása, ellenőrzése
+    df = pd.read_csv(csv_fajl, encoding="utf-8")
+    all_parties = [c.strip() for c in df.columns if c.strip().lower() != "polldate" and not c.startswith("Unnamed")]
+    df["date"] = pd.to_datetime(df["polldate"])
+
+    filtered_dict = {p: c for p, c in partok_es_szinek.items() if p in all_parties}
+    if len(filtered_dict) < len(partok_es_szinek):
+        missing = set(partok_es_szinek.keys()) - set(filtered_dict.keys())
+        print(f"Hiányzik a fájlból: {', '.join(missing)}")
+
+    df = df[["date"] + list(filtered_dict.keys())]
+
+    start_date = pd.to_datetime(mettol) if mettol else df["date"].min()
+    end_date = pd.to_datetime(meddig) if meddig else df["date"].max()
+    df_visible = df[(df["date"] >= start_date) & (df["date"] <= end_date)]
+
+    # Ha nincsen az adott intervallumban adat
+    if df_visible.empty:
+        df_visible = df.copy()
+
+    # Táblázatot átalakítjuk
+    df_long = pd.melt(df_visible, id_vars=["date"], value_vars=list(filtered_dict.keys()),
+                      var_name="party", value_name="value")
+    df_long["party"] = pd.Categorical(df_long["party"], categories=list(filtered_dict.keys()))
