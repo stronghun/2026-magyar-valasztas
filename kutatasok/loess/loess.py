@@ -10,6 +10,7 @@ warnings.filterwarnings("ignore", category=np.exceptions.RankWarning)
 
 def kozvelemeny_grafikon(
     csv_fajl: str = "de.csv",
+    csv_elvalaszto: str = ',',
 
     # X és Y tengely meghatározása
     mettol: str = None,
@@ -19,6 +20,7 @@ def kozvelemeny_grafikon(
 
     # Küszöb
     valasztasi_kuszob: float = 5,
+    kuszob_stilus: str = ":",
     kuszob_vastagsag: float = 1.5,
     kuszob_szin: str = "#666666bb",
 
@@ -42,6 +44,9 @@ def kozvelemeny_grafikon(
     racs_lathato: bool = True,
     racs_alvonal_szin: str = "#ffffffaa",
     racs_alvonal_vastagsag: float = 0.6,
+
+    # Kizárt időszak adott párt esetében
+    kizart_idoszakok: dict = None,
 
     # Pártok
     partok_es_szinek: dict = None,
@@ -92,7 +97,7 @@ def kozvelemeny_grafikon(
         return ynew
     
     # Adatok beolvasása, ellenőrzése
-    df = pd.read_csv(csv_fajl, encoding="utf-8")
+    df = pd.read_csv(csv_fajl, encoding="utf-8", sep=csv_elvalaszto)
     all_parties = [c.strip() for c in df.columns if c.strip().lower() != "polldate" and not c.startswith("Unnamed")]
     df["date"] = pd.to_datetime(df["polldate"])
 
@@ -118,25 +123,61 @@ def kozvelemeny_grafikon(
 
     # Plot
     fig, ax = plt.subplots(figsize=(szelesseg, magassag))
-    ax.axhline(valasztasi_kuszob, color=kuszob_szin, linestyle="--", linewidth=kuszob_vastagsag)
+    ax.axhline(valasztasi_kuszob, color=kuszob_szin, linestyle=kuszob_stilus, linewidth=kuszob_vastagsag)
 
     # Pontok, trendvonalak
     for party, color in filtered_dict.items():
         pdata = df_long[df_long["party"] == party].dropna(subset=["value"]).sort_values("date")
+
+        # Kizárt időszakok
+        excluded_ranges = []
+        if kizart_idoszakok and party in kizart_idoszakok:
+            for (start, end) in kizart_idoszakok[party]:
+                start = pd.to_datetime(start)
+                end = pd.to_datetime(end)
+                excluded_ranges.append((start, end))
+                pdata = pdata[~((pdata["date"] >= start) & (pdata["date"] <= end))]
+
         if len(pdata) < 3:
             continue
+
+        # Pontok (kizárt időszakok nélkül)
         ax.scatter(
             pdata["date"], pdata["value"],
             s=pont_meret, color=color,
             alpha=pont_atlatszosag, edgecolor="white", linewidth=0.6
         )
-        x = (pdata["date"] - pdata["date"].min()).dt.days.values
-        y = pdata["value"].values
-        x_dense = np.linspace(min(x), max(x), 500)
-        y_smooth = loess(x, y, x_dense, loess_szigor)
-        date_dense = pdata["date"].min() + pd.to_timedelta(x_dense, unit="D")
-        ax.plot(date_dense, y_smooth, color=color,
-                linewidth=trend_vastagsag, label=party)
+
+        segments = []
+        segment_start = pdata["date"].min()
+        segment_end = pdata["date"].max()
+
+        if not excluded_ranges:
+            segments = [(segment_start, segment_end)]
+        else:
+            excluded_ranges = sorted(excluded_ranges, key=lambda x: x[0])
+            current_start = segment_start
+            for (start, end) in excluded_ranges:
+                if start > current_start and start <= segment_end:
+                    segments.append((current_start, start - pd.Timedelta(days=1)))
+                current_start = end + pd.Timedelta(days=1)
+            if current_start <= segment_end:
+                segments.append((current_start, segment_end))
+
+        #  Külön trendvonalak húzása a kizárt időszakok által elvágott ponthalmazokra
+        for (seg_start, seg_end) in segments:
+            seg_data = pdata[(pdata["date"] >= seg_start) & (pdata["date"] <= seg_end)]
+            if len(seg_data) < 3:
+                continue
+            x = (seg_data["date"] - seg_data["date"].min()).dt.days.values
+            y = seg_data["value"].values
+            x_dense = np.linspace(min(x), max(x), 300)
+            y_smooth = loess(x, y, x_dense, loess_szigor)
+            date_dense = seg_data["date"].min() + pd.to_timedelta(x_dense, unit="D")
+            ax.plot(date_dense, y_smooth, color=color, linewidth=trend_vastagsag, label=None)
+
+        ax.plot([], [], color=color, linewidth=trend_vastagsag, label=party)
+
         
     # Választási eredménypontok
     if valasztasi_eredmenyek:
@@ -195,11 +236,11 @@ def kozvelemeny_grafikon(
 # Futtatás
 
 partok_es_szinek = {
-    "SPD": "#EB001F",
-    "Union": "#000000",
-    "Grüne": "#64A12D",
-    "FDP": "#FFED00",
-    "AfD": "#009EE0",
+    "Fidesz": "#FF6A00",
+    "TISZA": "#ED4551",
+    "DK": "#0067AA",
+    "MKKP": "#FFED00",
+    "DK-MSZP-P": "#009EE0",
     "Linke": "#BE3075",
     "BSW": "#792350",
     "FW": "#F7A800"
@@ -216,15 +257,21 @@ valasztasi_eredmenyek = [
     }
 ]
 
+kizart_idoszakok = {
+    "DK": [("2024-04-10", "2024-10-10")]
+}
+
 kozvelemeny_grafikon(
-    csv_fajl="de.csv",
-    mettol="2021-10-01",
-    meddig="2025-03-01",
-    y_hatarok=(0, 40),
+    csv_fajl="hu.csv",
+    mettol="2022-04-04",
+    meddig="2026-04-12",
+    y_hatarok=(0, 60),
     y_offset_negativ=-2,
     valasztasi_kuszob=5,
+    kuszob_stilus="--",
     kuszob_vastagsag=1.8,
-    loess_szigor=0.09,
+    kuszob_szin="#999999",
+    loess_szigor=0.9,
     pont_meret=30,
     pont_atlatszosag=0.45,
     trend_vastagsag=2.6,
@@ -236,6 +283,7 @@ kozvelemeny_grafikon(
     racs_alvonal_vastagsag=0.6,
     racs_lathato=True,
     partok_es_szinek=partok_es_szinek,
+    kizart_idoszakok=kizart_idoszakok,
     valasztasi_eredmenyek=valasztasi_eredmenyek,
     kimenet="test"
 )
