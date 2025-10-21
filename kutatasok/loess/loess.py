@@ -48,6 +48,9 @@ def kozvelemeny_grafikon(
     # Kizárt időszak adott párt esetében
     kizart_idoszakok: dict = None,
 
+    # Kutatócégekre szűrés
+    szurt_intezmenyek: list = None,
+
     # Pártok
     partok_es_szinek: dict = None,
     kimenet: str = None
@@ -100,6 +103,17 @@ def kozvelemeny_grafikon(
     df = pd.read_csv(csv_fajl, encoding="utf-8", sep=csv_elvalaszto)
     all_parties = [c.strip() for c in df.columns if c.strip().lower() != "polldate" and not c.startswith("Unnamed")]
     df["date"] = pd.to_datetime(df["polldate"])
+
+    # Kutatókra szűrés
+    if szurt_intezmenyek and "polling_firm" in df.columns:
+        eredeti_sorok = len(df)
+        df = df[df["polling_firm"].isin(szurt_intezmenyek)]
+        print(f"Csak a következő intézetek maradtak: {', '.join(szurt_intezmenyek)} "
+              f"({len(df)}/{eredeti_sorok} sor)")
+    elif szurt_intezmenyek and "polling_firm" not in df.columns:
+        print("Figyelmeztetés: 'polling_firm' oszlop nem található, "
+              "de 'szurt_intezmenyek' meg van adva → szűrés kihagyva.")
+    
 
     filtered_dict = {p: c for p, c in partok_es_szinek.items() if p in all_parties}
     if len(filtered_dict) < len(partok_es_szinek):
@@ -161,8 +175,14 @@ def kozvelemeny_grafikon(
                 if start > current_start and start <= segment_end:
                     segments.append((current_start, start - pd.Timedelta(days=1)))
                 current_start = end + pd.Timedelta(days=1)
-            if current_start <= segment_end:
-                segments.append((current_start, segment_end))
+
+            if segments:
+                last_end = segments[-1][1]
+                if last_end < segment_end:
+                    segments.append((last_end + pd.Timedelta(days=1), segment_end))
+            else:
+                if segment_start < segment_end:
+                    segments.append((segment_start, segment_end))
 
         #  Külön trendvonalak húzása a kizárt időszakok által elvágott ponthalmazokra
         for (seg_start, seg_end) in segments:
@@ -236,36 +256,44 @@ def kozvelemeny_grafikon(
 # Futtatás
 
 partok_es_szinek = {
+    "TISZA": "#112866",
     "Fidesz": "#FF6A00",
-    "TISZA": "#ED4551",
     "DK": "#0067AA",
-    "MKKP": "#FFED00",
-    "DK-MSZP-P": "#009EE0",
-    "Linke": "#BE3075",
-    "BSW": "#792350",
-    "FW": "#F7A800"
+    "MH": "#688D1B",
+    "MKKP": "#808080",
+    "MM": "#8E6FCE",
+    "MSZP": "#CC0000",
+    "P": "#39B54A",
+    "Jobbik": "#047B60",
+    "LMP": "#54B586",
+    "MMN": "#001166",
+    "2RK": "#F1DB7B",
+    "NP": "#023854",
+    "DK-MSZP-P": "#6BC4FF"
 }
 
 valasztasi_eredmenyek = [
     {
-        "datum": "2021-09-26",
-        "adatok": {"SPD": 25.7, "Union": 24.1, "Grüne": 14.8, "FDP": 11.5, "AfD": 10.3, "Linke": 4.9}
-    },
-    {
-        "datum": "2025-02-23",
-        "adatok": {"SPD": 22.3, "Union": 27.5, "Grüne": 15.0, "AfD": 17.1, "BSW": 5.6}
+        "datum": "2024-06-09",
+        "adatok": {"Fidesz": 44.34, "TISZA": 29.86, "DK-MSZP-P": 8.15, "MH": 6.79, "MM": 3.70, "MKKP": 3.60, "Jobbik": 1.01, "LMP": 0.88, "2RK": 0.68, "MMN": 0.65}
     }
 ]
 
 kizart_idoszakok = {
-    "DK": [("2024-04-10", "2024-10-10")]
+    "DK": [("2024-03-28", "2024-10-19")],
+    "MSZP": [("2024-03-28", "2024-10-19")],
+    "P": [("2024-03-28", "2024-10-19")],
 }
+
+narancsos_kutatok= ["Nézőpont", "Társadalomkutató", "Századvég", "Századvég/McLaughlin", "Real-PR 93"]
+narancsmentes_kutatok= ["21 Kutató", "Medián", "Publicus", "ZRI", "IDEA", ""]
 
 kozvelemeny_grafikon(
     csv_fajl="hu.csv",
+    csv_elvalaszto=";",
     mettol="2022-04-04",
     meddig="2026-04-12",
-    y_hatarok=(0, 60),
+    y_hatarok=(0, 65),
     y_offset_negativ=-2,
     valasztasi_kuszob=5,
     kuszob_stilus="--",
@@ -276,7 +304,7 @@ kozvelemeny_grafikon(
     pont_atlatszosag=0.45,
     trend_vastagsag=2.6,
     eredmeny_meret_szorzo=2.5,      
-    eredmeny_atlatszosag_szorzo=1.0, 
+    eredmeny_atlatszosag_szorzo=1, 
     racs_szin="white",
     racs_vastagsag=1.5,
     racs_alvonal_szin="#ffffffaa",
@@ -284,6 +312,7 @@ kozvelemeny_grafikon(
     racs_lathato=True,
     partok_es_szinek=partok_es_szinek,
     kizart_idoszakok=kizart_idoszakok,
+    szurt_intezmenyek=narancsos_kutatok,
     valasztasi_eredmenyek=valasztasi_eredmenyek,
     kimenet="test"
 )
