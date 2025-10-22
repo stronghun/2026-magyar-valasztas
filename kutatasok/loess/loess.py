@@ -26,8 +26,13 @@ def kozvelemeny_grafikon(
 
     valasztasi_eredmenyek: list = None, 
 
-    # Loess, pontok beállítása
+    # LOESS
     loess_szigor: float = 0.25,
+    loess_fok: int = 1,
+    loess_pontok: int = 300,
+    partonkenti_loess: dict = None,
+
+    # Loess, pontok beállítása
     pont_meret: float = 20,
     pont_atlatszosag: float = 0.4,
     trend_vastagsag: float = 2.5,
@@ -44,6 +49,8 @@ def kozvelemeny_grafikon(
     racs_lathato: bool = True,
     racs_alvonal_szin: str = "#ffffffaa",
     racs_alvonal_vastagsag: float = 0.6,
+    fix_vonalak: list = None,
+
 
     # Kizárt időszak adott párt esetében
     kizart_idoszakok: dict = None,
@@ -191,8 +198,16 @@ def kozvelemeny_grafikon(
                 continue
             x = (seg_data["date"] - seg_data["date"].min()).dt.days.values
             y = seg_data["value"].values
-            x_dense = np.linspace(min(x), max(x), 300)
-            y_smooth = loess(x, y, x_dense, loess_szigor)
+            x_dense = np.linspace(min(x), max(x), loess_pontok)
+
+            if partonkenti_loess and party in partonkenti_loess:
+                span = partonkenti_loess[party].get("loess_szigor", loess_szigor)
+                fok = partonkenti_loess[party].get("loess_fok", loess_fok)
+            else:
+                span = loess_szigor
+                fok = loess_fok
+
+            y_smooth = loess(x, y, x_dense, span, degree=fok)
             date_dense = seg_data["date"].min() + pd.to_timedelta(x_dense, unit="D")
             ax.plot(date_dense, y_smooth, color=color, linewidth=trend_vastagsag, label=None)
 
@@ -214,6 +229,20 @@ def kozvelemeny_grafikon(
                         marker="D",
                         zorder=10
                     )
+    if fix_vonalak:
+        for vonal in fix_vonalak:
+            datum = pd.to_datetime(vonal.get("datum"))
+            szin = vonal.get("szin", "#000000")
+            vastagsag = vonal.get("vastagsag", 1.5)
+            stilus = vonal.get("stilus", "--")
+            ax.axvline(
+                x=datum,
+                color=szin,
+                linewidth=vastagsag,
+                linestyle=stilus,
+                alpha=0.8,
+                zorder=1
+            )
 
     # Tengelyek
     ymin = y_hatarok[0] + y_offset_negativ
@@ -227,8 +256,7 @@ def kozvelemeny_grafikon(
     ax.yaxis.set_major_formatter(FuncFormatter(y_fmt))
 
     # Kisebb rácsok megjelenítése
-    ax.xaxis.set_major_locator(mdates.MonthLocator(bymonth=[1, 4, 7, 10]))
-    ax.xaxis.set_minor_locator(mdates.MonthLocator(interval=1))
+    ax.xaxis.set_minor_locator(mdates.MonthLocator(interval=6))
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%b %Y"))
     ax.grid(which="minor", color=racs_alvonal_szin, linewidth=racs_alvonal_vastagsag, linestyle="-")
 
@@ -258,32 +286,43 @@ def kozvelemeny_grafikon(
 partok_es_szinek = {
     "TISZA": "#112866",
     "Fidesz": "#FF6A00",
-    "DK": "#0067AA",
-    "MH": "#688D1B",
+    "Dobrev Klára Pártja": "#0067AA",
+    "Mi Hazánk": "#688D1B",
     "MKKP": "#808080",
-    "MM": "#8E6FCE",
+    "Momentum": "#8E6FCE",
     "MSZP": "#CC0000",
-    "P": "#39B54A",
+    "Párbeszéd": "#39B54A",
     "Jobbik": "#047B60",
     "LMP": "#54B586",
-    "MMN": "#001166",
-    "2RK": "#F1DB7B",
-    "NP": "#023854",
-    "DK-MSZP-P": "#6BC4FF"
+    "Mindenki Magyarországa": "#001166",
+    "Második Reformkor": "#F1DB7B",
+    "Nép Pártján": "#023854",
+    "Szociáldemokrata-zöld koalíció": "#6BC4FF"
 }
 
 valasztasi_eredmenyek = [
     {
         "datum": "2024-06-09",
-        "adatok": {"Fidesz": 44.34, "TISZA": 29.86, "DK-MSZP-P": 8.15, "MH": 6.79, "MM": 3.70, "MKKP": 3.60, "Jobbik": 1.01, "LMP": 0.88, "2RK": 0.68, "MMN": 0.65}
+        "adatok": {"Fidesz": 44.34, "TISZA": 29.86, "Szociáldemokrata-zöld koalíció": 8.15, "Mi Hazánk": 6.79, "Momentum": 3.70, "MKKP": 3.60, "Jobbik": 1.01, "LMP": 0.88, "Második Reformkor": 0.68, "Mindenki Magyarországa": 0.65}
     }
 ]
 
 kizart_idoszakok = {
-    "DK": [("2024-03-28", "2024-10-19")],
-    "MSZP": [("2024-03-28", "2024-10-19")],
-    "P": [("2024-03-28", "2024-10-19")],
+    "Dobrev Klára Pártja": [("2024-03-28", "2024-06-16")],
+    "MSZP": [("2024-03-28", "2024-06-16")],
+    "Párbeszéd": [("2024-03-28", "2024-06-16")],
+    "Szociáldemokrata-zöld koalíció": [("2024-06-09", "2025-06-13")]
 }
+
+partonkenti_loess = {
+    "Szociáldemokrata-zöld koalíció": {"loess_szigor": 1, "loess_fok": 2},
+}
+
+fix_vonalak = [
+    {"datum": "2022-04-04", "szin": "#999999", "vastagsag": 1.5, "stilus": "-"},
+    {"datum": "2026-04-12", "szin": "#999999", "vastagsag": 1.5, "stilus": "-"},
+]
+
 
 narancsos_kutatok= ["Nézőpont", "Társadalomkutató", "Századvég", "Századvég/McLaughlin", "Real-PR 93"]
 narancsmentes_kutatok= ["21 Kutató", "Medián", "Publicus", "ZRI", "IDEA", ""]
@@ -291,19 +330,18 @@ narancsmentes_kutatok= ["21 Kutató", "Medián", "Publicus", "ZRI", "IDEA", ""]
 kozvelemeny_grafikon(
     csv_fajl="hu.csv",
     csv_elvalaszto=";",
-    mettol="2022-04-04",
-    meddig="2026-04-12",
+    mettol="2022-03-04",
+    meddig="2026-05-12",
     y_hatarok=(0, 65),
     y_offset_negativ=-2,
     valasztasi_kuszob=5,
     kuszob_stilus="--",
-    kuszob_vastagsag=1.8,
+    kuszob_vastagsag=2.2,
     kuszob_szin="#999999",
-    loess_szigor=0.9,
     pont_meret=30,
     pont_atlatszosag=0.45,
-    trend_vastagsag=2.6,
-    eredmeny_meret_szorzo=2.5,      
+    trend_vastagsag=3,
+    eredmeny_meret_szorzo=3.0,      
     eredmeny_atlatszosag_szorzo=1, 
     racs_szin="white",
     racs_vastagsag=1.5,
@@ -312,8 +350,13 @@ kozvelemeny_grafikon(
     racs_lathato=True,
     partok_es_szinek=partok_es_szinek,
     kizart_idoszakok=kizart_idoszakok,
-    szurt_intezmenyek=narancsos_kutatok,
+    szurt_intezmenyek=None,
     valasztasi_eredmenyek=valasztasi_eredmenyek,
+    loess_szigor=0.75,
+    loess_fok=2,
+    loess_pontok=1200,
+    partonkenti_loess=partonkenti_loess,
+    fix_vonalak=fix_vonalak,
     kimenet="test"
 )
 
