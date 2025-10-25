@@ -5,6 +5,8 @@ from matplotlib.ticker import FuncFormatter
 import numpy as np
 import warnings
 import re
+from scipy.interpolate import make_interp_spline
+from statsmodels.nonparametric.smoothers_lowess import lowess
 
 warnings.filterwarnings("ignore", category=np.exceptions.RankWarning)
 
@@ -75,36 +77,62 @@ def kozvelemeny_grafikon(
         "axes.axisbelow": True,
     })
 
-    def loess(x, y, xnew, span, degree=2):
+    def loess(x, y, xnew, span=0.3, degree=1, robust=True, iterations=2):
         x, y, xnew = np.asarray(x), np.asarray(y), np.asarray(xnew)
         n = len(x)
         if n < degree + 2:
             return np.full(len(xnew), np.nan)
+
         k = max(int(span * n), degree + 1)
-        ynew = np.empty(len(xnew))
+
+        def local_fit(xi, y, x, w):
+            X = np.vstack([np.ones_like(x)] + [(x - xi) ** d for d in range(1, degree + 1)])
+            W = np.diag(w)
+            beta, *_ = np.linalg.lstsq(W @ X.T, W @ y, rcond=None)
+            return beta[0]
+
+        yfit = np.zeros_like(y)
+        for i, xi in enumerate(x):
+            dists = np.abs(x - xi)
+            idx = np.argsort(dists)
+            h = dists[idx[k - 1]]
+            u = dists / h if h > 0 else np.zeros_like(dists)
+            w = np.where(u < 1, (1 - u**3)**3, 0)
+            yfit[i] = local_fit(xi, y, x, w)
+
+        if robust:
+            resid = np.abs(y - yfit)
+            s = np.median(resid)
+            if s == 0:
+                s = np.mean(resid) + 1e-6
+            robustness = (1 - (resid / (6 * s))**2) ** 2
+            robustness[resid > 6 * s] = 0
+
+            for _ in range(iterations):
+                yfit = np.zeros_like(y)
+                for i, xi in enumerate(x):
+                    dists = np.abs(x - xi)
+                    idx = np.argsort(dists)
+                    h = dists[idx[k - 1]]
+                    u = dists / h if h > 0 else np.zeros_like(dists)
+                    w = np.where(u < 1, (1 - u**3)**3, 0) * robustness
+                    yfit[i] = local_fit(xi, y, x, w)
+
+        ynew = np.zeros_like(xnew)
         for i, xi in enumerate(xnew):
             dists = np.abs(x - xi)
-            idx_sort = np.argsort(dists)
-            h = dists[idx_sort[k - 1]]
-            if h == 0:
-                if np.all(x == xi):
-                    ynew[i] = np.mean(y)
-                    continue
-                h = np.max(dists[dists > 0]) if np.any(dists > 0) else 1e-6
-            u = dists / h
+            idx = np.argsort(dists)
+            h = dists[idx[k - 1]]
+            u = dists / h if h > 0 else np.zeros_like(dists)
             w = np.where(u < 1, (1 - u**3)**3, 0)
-            dx = x - xi
-            X = np.ones((n, degree + 1))
-            for d in range(1, degree + 1):
-                X[:, d] = dx ** d
-            W = np.diag(w)
-            try:
-                beta = np.linalg.solve(X.T @ W @ X, X.T @ W @ y)
-                ynew[i] = beta[0]
-            except np.linalg.LinAlgError:
-                sum_w = np.sum(w)
-                ynew[i] = np.sum(w * y) / sum_w if sum_w > 0 else np.nan
+            ynew[i] = local_fit(xi, y, x, w)
+
         return ynew
+
+    def loess2(x, y, xnew, span, degree=1):
+        fitted = lowess(y, x, frac=span, it=3, delta=0.0, is_sorted=True, return_sorted=True)
+        x_fit, y_fit = fitted[:, 0], fitted[:, 1]
+        return np.interp(xnew, x_fit, y_fit)
     
     # Adatok beolvasása, ellenőrzése
     df = pd.read_csv(csv_fajl, encoding="utf-8", sep=csv_elvalaszto)
@@ -208,6 +236,7 @@ def kozvelemeny_grafikon(
                 fok = loess_fok
 
             y_smooth = loess(x, y, x_dense, span, degree=fok)
+           
             date_dense = seg_data["date"].min() + pd.to_timedelta(x_dense, unit="D")
             ax.plot(date_dense, y_smooth, color=color, linewidth=trend_vastagsag, label=None)
 
@@ -297,7 +326,8 @@ partok_es_szinek = {
     "Mindenki Magyarországa": "#001166",
     "Második Reformkor": "#F1DB7B",
     "Nép Pártján": "#023854",
-    "Szociáldemokrata-zöld koalíció": "#6BC4FF"
+    "Szociáldemokrata-zöld koalíció": "#6BC4FF",
+    "Egyéb": "#505050"
 }
 
 valasztasi_eredmenyek = [
@@ -311,11 +341,18 @@ kizart_idoszakok = {
     "Dobrev Klára Pártja": [("2024-03-28", "2024-06-16")],
     "MSZP": [("2024-03-28", "2024-06-16")],
     "Párbeszéd": [("2024-03-28", "2024-06-16")],
-    "Szociáldemokrata-zöld koalíció": [("2024-06-09", "2025-06-13")]
+    "Egyéb": [("2022-03-28", "2024-06-16")],
+    "Nép Pártján": [("2024-06-09", "2026-12-12")],
+    "MSZP": [("2024-06-09", "2026-12-12")],
+    "Párbeszéd": [("2024-06-09", "2026-12-12")],
+    "LMP": [("2024-06-09", "2026-12-12")],
+    "Második Reformkor": [("2024-06-09", "2026-12-12")],
+    "Mindenki Magyarországa": [("2024-06-09", "2026-12-12")],
+    "Jobbik": [("2024-06-09", "2026-12-12")],
 }
 
 partonkenti_loess = {
-    "Szociáldemokrata-zöld koalíció": {"loess_szigor": 1, "loess_fok": 2},
+    "Szociáldemokrata-zöld koalíció": {"loess_szigor": 1, "loess_fok": 1},
 }
 
 fix_vonalak = [
@@ -330,7 +367,7 @@ narancsmentes_kutatok= ["21 Kutató", "Medián", "Publicus", "ZRI", "IDEA", ""]
 kozvelemeny_grafikon(
     csv_fajl="hu.csv",
     csv_elvalaszto=";",
-    mettol="2022-03-04",
+    mettol="2022-05-04",
     meddig="2026-05-12",
     y_hatarok=(0, 65),
     y_offset_negativ=-2,
@@ -352,10 +389,10 @@ kozvelemeny_grafikon(
     kizart_idoszakok=kizart_idoszakok,
     szurt_intezmenyek=None,
     valasztasi_eredmenyek=valasztasi_eredmenyek,
-    loess_szigor=0.75,
-    loess_fok=2,
-    loess_pontok=1200,
-    partonkenti_loess=partonkenti_loess,
+    loess_szigor=0.70,
+    loess_fok=1,
+    loess_pontok=2500,
+    partonkenti_loess=None,
     fix_vonalak=fix_vonalak,
     kimenet="test"
 )
